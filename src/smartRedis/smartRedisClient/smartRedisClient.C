@@ -248,6 +248,10 @@ Foam::smartRedisClient::sendGeometricFields
     DataSet ds(dsName);
     sendAllFields<supportedFieldTypes>(ds, fieldNames, patchNames);
     client().put_dataset(ds);
+    const dictionary& dsDict = namingConventionState_.subDict("dataset");
+    word timeIndex = word(dsDict.lookup("time_index"));
+    word list_name_by_rank = "list_time_index_" + timeIndex;
+    client().append_to_list(list_name_by_rank, ds);
 }
 
 void

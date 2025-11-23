@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
     SmartRedis::Client client(false);
 
     const auto mpiRank = std::to_string(Pstream::myProcNo());
-    auto baseName = "rec_ensemble_r" + svdRank + "_" + mpiRank + 
+    auto baseName = "rec_ensemble_r" + svdRank + "_field_name_" + fieldName + "_" + mpiRank + 
         ".rank_" + svdRank + "_field_name_" + fieldName +
         "_mpi_rank_" + mpiRank;
 
@@ -101,22 +101,41 @@ int main(int argc, char *argv[])
         {
             Info << "Writing reconstruction at time " << runTime.value() << endl;
             auto tensorName = baseName + "_time_index_" + std::to_string(runTime.timeIndex());
+            Info << "tensorName " << tensorName << endl;
+            
             auto tensorInDB = client.tensor_exists(tensorName);
             if (tensorInDB)
             {
+
+                if (fieldName == "U") {
+                Info << "fieldName " << fieldName << endl;
+
+                volVectorField Utemplate
+                (
+                    IOobject
+                    (
+                        "U",                       // template field present in the case
+                        "0",
+                        mesh,
+                        IOobject::MUST_READ,       // ensure we get BCs
+                        IOobject::NO_WRITE
+                    ),
+                    mesh
+                );
                 volVectorField U
                 (
                     IOobject
                     (
-                        "recU_r_" + svdRank,
+                        //"recU_r_" + svdRank,
+                        "U",
                         runTime.timeName(),
                         mesh,
                         IOobject::NO_READ,
                         IOobject::AUTO_WRITE
                     ),
-                    mesh,
-                    dimensionedVector("U", dimVelocity, vector::zero)
+                    Utemplate
                 );
+                
 
                 SRTensorType get_type;
                 std::vector<size_t> get_dims;
@@ -130,8 +149,53 @@ int main(int argc, char *argv[])
                     );
                     U.internalFieldRef()[cellI] = Ui;
                 }
+                U.correctBoundaryConditions();
                 U.write();
             }
+
+                else {
+                    Info << "fieldName  else" << fieldName << endl;
+
+                    volScalarField scalartemplate
+                    (
+                        IOobject
+                        (
+                            fieldName,                       // template field present in the case
+                            "0",
+                            mesh,
+                            IOobject::MUST_READ,       // ensure we get BCs
+                            IOobject::NO_WRITE
+                        ),
+                        mesh
+                    );
+                    volScalarField scalar
+                    (
+                        IOobject
+                        (
+                            //"rec_" + fieldName + "_r_" + svdRank,
+                            fieldName,
+                            runTime.timeName(),
+                            mesh,
+                            IOobject::NO_READ,
+                            IOobject::AUTO_WRITE
+                        ),
+                        scalartemplate
+                    );
+                SRTensorType get_type;
+                std::vector<size_t> get_dims;
+                void* reconstruction;
+                client.get_tensor(tensorName, reconstruction, get_dims, get_type, SRMemLayoutNested);
+                forAll (scalar.internalFieldRef(), cellI)
+                {   
+                    scalar.internalFieldRef()[cellI] = ((double*)reconstruction)[cellI];
+                }
+                scalar.correctBoundaryConditions();
+                scalar.write();
+                    
+                }
+
+
+        }
         }
         isRunning = runTime.value() < (endTime - 0.5*deltaT);
         if (isRunning)
